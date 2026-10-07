@@ -19,15 +19,21 @@ variable "region" {
 }
 
 variable "kubernetes_version" {
-  description = "EKS version. null = EKS default (avoids accidentally landing on a version in paid extended support)."
+  # Must be explicit: with null the node group derives its version from the cluster,
+  # which is unknown until apply and breaks planning (module count dependency).
+  # 1.36 = EKS default in eu-north-1, standard support until 2027-08 (check with
+  # `aws eks describe-cluster-versions` to avoid paid extended support).
+  description = "EKS Kubernetes version."
   type        = string
-  default     = null
+  default     = "1.36"
 }
 
 variable "node_instance_type" {
   description = "Worker node instance type. The OTel Demo needs ~6-8 GiB across the cluster."
   type        = string
-  default     = "t3.large"
+  # m7i-flex.large (2 vCPU / 8 GiB) is the largest type allowed on an AWS Free plan
+  # account; t3.large fails with "not eligible for Free Tier".
+  default = "m7i-flex.large"
 }
 
 variable "node_desired_size" {

@@ -14,7 +14,7 @@ DEMO_VALUES += $(CX_DIR)/helm/otel-demo-values.yaml
 # Agent before demo, so the demo's first spans have somewhere to go.
 UP_STEPS := aws cx-s3 kubeconfig repos cx-repo coralogix demo
 
-.PHONY: cx-s3 cx-repo cx-secret coralogix cx-status destroy-coralogix destroy-coralogix-archive
+.PHONY: cx-s3 cx-repo cx-secret coralogix cx-status destroy-coralogix cx-s3-destroy
 
 # Connecting the buckets to Coralogix is done in the UI (Data Flow -> Setup Archive).
 cx-s3: ## Provision the customer-owned S3 archive buckets
@@ -41,10 +41,11 @@ cx-status: ## Show Coralogix collector pods
 destroy-coralogix:
 	-helm uninstall otel-coralogix-integration -n $(CX_NS)
 
+# Deliberately NOT part of `make down`: the archive is customer-owned data and the
+# Coralogix UI archive connection points at it, so it outlives cluster rebuilds.
 # Disconnect the archive in the Coralogix UI before running this.
-destroy-coralogix-archive:
-	-terraform -chdir=$(CX_S3_DIR) destroy
+cx-s3-destroy: ## Delete the S3 archive buckets AND their data (disconnect in UI first)
+	terraform -chdir=$(CX_S3_DIR) destroy
 
-# Hook into the base teardown: these run before the AWS destroy.
+# Hook into the base teardown: the agent is uninstalled with the demo.
 destroy-k8s: destroy-coralogix
-down: destroy-coralogix-archive

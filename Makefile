@@ -11,6 +11,11 @@ AWS_DIR        := infra/aws
 DEMO_NS        := otel-demo
 DEMO_CHART_VER := 0.42.3
 
+# Node group sizes restored by `make wake` (keep in sync with infra/aws eks.tf).
+NODES_MIN     := 2
+NODES_MAX     := 4
+NODES_DESIRED := 3
+
 # Extra values files for the demo. Empty = chart defaults (bundled collector,
 # Jaeger, Prometheus, Grafana, OpenSearch). Vendors append their overlays.
 DEMO_VALUES :=
@@ -21,7 +26,7 @@ UP_STEPS := aws kubeconfig repos demo
 # DEMO_VALUES, override UP_STEPS and add targets.
 -include vendors/*/vendor.mk
 
-.PHONY: help up down aws kubeconfig repos demo status validate frontend destroy-k8s
+.PHONY: help up down aws kubeconfig repos demo status validate frontend destroy-k8s sleep wake
 
 help:
 	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
@@ -53,8 +58,29 @@ validate: ## Run end-to-end validation checks
 frontend: ## Port-forward the demo storefront to http://localhost:8080
 	kubectl -n $(DEMO_NS) port-forward svc/frontend-proxy 8080:8080
 
+# Scale worker nodes to 0. The control plane (~$0.10/h) and NAT gateway keep
+# running, but nodes are most of the cost. Helm releases and cluster config survive;
+# pods are rescheduled on `make wake`. A later `terraform apply` resets min_size.
+sleep: ## Scale worker nodes to 0 (cluster kept, ~5 min to wake)
+	CLUSTER=$$(terraform -chdir=$(AWS_DIR) output -raw cluster_name)
+	REGION=$$(terraform -chdir=$(AWS_DIR) output -raw region)
+	NG=$$(aws eks list-nodegroups --region $$REGION --cluster-name $$CLUSTER --query 'nodegroups[0]' --output text)
+	aws eks update-nodegroup-config --region $$REGION --cluster-name $$CLUSTER --nodegroup-name $$NG \
+	  --scaling-config minSize=0,maxSize=$(NODES_MAX),desiredSize=0 --query 'update.status' --output text
+	echo "Scaling $$NG to 0 nodes. Run 'make wake' to bring it back."
+
+wake: ## Scale worker nodes back up and wait for them to be Ready
+	CLUSTER=$$(terraform -chdir=$(AWS_DIR) output -raw cluster_name)
+	REGION=$$(terraform -chdir=$(AWS_DIR) output -raw region)
+	NG=$$(aws eks list-nodegroups --region $$REGION --cluster-name $$CLUSTER --query 'nodegroups[0]' --output text)
+	aws eks update-nodegroup-config --region $$REGION --cluster-name $$CLUSTER --nodegroup-name $$NG \
+	  --scaling-config minSize=$(NODES_MIN),maxSize=$(NODES_MAX),desiredSize=$(NODES_DESIRED) --query 'update.status' --output text
+	aws eks wait nodegroup-active --region $$REGION --cluster-name $$CLUSTER --nodegroup-name $$NG
+	until [ "$$(kubectl get nodes --no-headers 2>/dev/null | grep -cw Ready)" -ge $(NODES_MIN) ]; do sleep 15; done
+	kubectl get nodes
+
 destroy-k8s:
 	-helm uninstall otel-demo -n $(DEMO_NS)
 
-down: destroy-k8s ## Tear everything down (stops AWS costs)
+down: destroy-k8s ## Tear down the demo and the cluster (stops most AWS costs)
 	terraform -chdir=$(AWS_DIR) destroy

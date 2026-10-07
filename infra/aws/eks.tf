@@ -61,6 +61,10 @@ module "eks" {
       min_size       = 2
       max_size       = 4
       desired_size   = var.node_desired_size
+
+      # Default would be "default-eks-node-group-*"; keep every IAM name under the
+      # project prefix so the deployer's IAM permissions can be scoped to it.
+      iam_role_name = "${local.cluster_name}-node"
     }
   }
 }
