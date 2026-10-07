@@ -1,0 +1,45 @@
+# OpenTelemetry Demo (chart: open-telemetry/opentelemetry-demo)
+#
+# Design: remove the demo's bundled collector and backends entirely and have every
+# service export OTLP straight to the Coralogix agent DaemonSet on its own node.
+#
+#   app pod --OTLP--> coralogix agent (same node, hostNetwork :4317/:4318) --> Coralogix EU2
+#
+# Every component in the chart builds its endpoint from $(OTEL_COLLECTOR_NAME)
+# (e.g. http://$(OTEL_COLLECTOR_NAME):4317), so redefining that one variable as the
+# node IP re-points the whole demo without per-service overrides.
+#
+# Trade-off: the demo collector also scraped postgres/redis/kafka/httpcheck receivers;
+# those metrics are not collected in this design.
+
+default:
+  # Lists are replaced, not merged, so this restates the chart default with one change.
+  env:
+    - name: OTEL_SERVICE_NAME
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: "metadata.labels['app.kubernetes.io/component']"
+    - name: OTEL_COLLECTOR_NAME
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: status.hostIP
+    - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+      value: cumulative
+    - name: OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION
+      value: explicit_bucket_histogram
+    - name: OTEL_RESOURCE_ATTRIBUTES
+      value: service.version={{ .Chart.AppVersion }},deployment.environment.name=lab
+
+# Bundled observability backends: off. Coralogix is the only destination.
+opentelemetry-collector:
+  enabled: false
+jaeger:
+  enabled: false
+prometheus:
+  enabled: false
+grafana:
+  enabled: false
+opensearch:
+  enabled: false

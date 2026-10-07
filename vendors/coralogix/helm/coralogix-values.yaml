@@ -1,0 +1,18 @@
+# Coralogix Kubernetes Observability (chart: coralogix/otel-integration)
+#
+# Topology:
+#   - opentelemetry-agent (DaemonSet, hostNetwork): receives OTLP from app pods on
+#     <node-ip>:4317/4318, tails container logs, scrapes kubelet + host metrics,
+#     enriches with k8s attributes, derives span metrics, exports to Coralogix.
+#   - opentelemetry-cluster-collector (Deployment, 1 replica): cluster-level metrics
+#     (k8s_cluster receiver), k8s events, and the Kubernetes dashboard data.
+#
+# API key comes from Secret `coralogix-keys` (key PRIVATE_KEY) — created by the
+# vendor.mk from $CORALOGIX_PRIVATE_KEY, never committed.
+
+global:
+  domain: "eu2.coralogix.com"
+  clusterName: "cx-otel-lab-eks"
+  defaultApplicationName: "otel-demo"
+  defaultSubsystemName: "integration"
+  deploymentEnvironmentName: "lab"
