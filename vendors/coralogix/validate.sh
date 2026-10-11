@@ -16,15 +16,16 @@ agents=$(kubectl get ds -n "$CX_NS" -o jsonpath='{.items[0].status.numberReady}/
 [[ -n $agents && ${agents%/*} == "${agents#*/}" ]] && pass "agent DaemonSet ready on every node ($agents)" || fail "agent DaemonSet not fully ready ($agents)"
 
 info "Demo -> agent wiring"
-pod=$(kubectl get pod -n "$DEMO_NS" -l app.kubernetes.io/component=checkout -o name | head -1)
+# cart is used because its image ships printenv; checkout is distroless (no shell tools).
+pod=$(kubectl get pod -n "$DEMO_NS" -l app.kubernetes.io/component=cart -o name | head -1)
 if [[ -n $pod ]]; then
   ep=$(kubectl exec -n "$DEMO_NS" "$pod" -- printenv OTEL_EXPORTER_OTLP_ENDPOINT 2>/dev/null)
   hostip=$(kubectl get -n "$DEMO_NS" "$pod" -o jsonpath='{.status.hostIP}')
-  [[ $ep == *"$hostip"* ]] && pass "checkout exports to node-local agent ($ep)" || fail "checkout endpoint is '$ep', expected node IP $hostip"
+  [[ $ep == *"$hostip"* ]] && pass "cart exports to node-local agent ($ep)" || fail "cart endpoint is '$ep', expected node IP $hostip"
 fi
 
 errs=$(kubectl logs -n "$CX_NS" -l app.kubernetes.io/name=opentelemetry-agent --since=10m --tail=2000 2>/dev/null \
-  | grep -ciE 'exporting failed|permission denied|unauthenticated|403|401')
+  | grep -cE '"level":"error"|Exporting failed|code = (Unauthenticated|PermissionDenied)|status( code)?:? 40[13]\b')
 [[ $errs -eq 0 ]] && pass "no export/auth errors in agent logs (last 10m)" || fail "$errs export/auth error lines in agent logs (last 10m)"
 
 info "Coralogix (query API)"
@@ -49,13 +50,19 @@ info "Customer-owned S3 archive"
 for kind in logs metrics; do
   bucket=$(terraform -chdir="$ROOT/vendors/coralogix/terraform" output -raw "archive_${kind}_bucket" 2>/dev/null)
   [[ -z $bucket ]] && { fail "no $kind bucket in terraform outputs"; continue; }
-  latest=$(aws s3api list-objects-v2 --bucket "$bucket" --query 'sort_by(Contents,&LastModified)[-1].[LastModified,Key]' --output text 2>&1)
-  if [[ $latest == None* || -z $latest ]]; then
-    fail "$bucket: empty (connected in the UI? first writes can take ~10-15 min)"
-  elif [[ $latest == *rror* ]]; then
-    fail "$bucket: $latest"
+  # Fail on AWS errors and on empty buckets explicitly; only a real object counts.
+  if ! out=$(aws s3api list-objects-v2 --bucket "$bucket" --output json \
+      --query '{n: length(Contents || `[]`), t: max_by(Contents || `[]`, &LastModified).LastModified}' 2>&1); then
+    fail "$bucket: $(echo "$out" | tail -1)"; continue
+  fi
+  n=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["n"] or 0)' <<<"$out")
+  t=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["t"] or "")' <<<"$out")
+  if [[ $n -eq 0 ]]; then
+    fail "$bucket: empty (archive connected in the UI? first writes take ~10-15 min)"
   else
-    pass "$bucket: latest object $latest"
+    age=$(( ($(date +%s) - $(date -d "$t" +%s)) / 60 ))
+    [[ $age -le 30 ]] && pass "$bucket: $n objects, newest ${age} min ago" \
+                      || fail "$bucket: newest object is ${age} min old (archiving stalled?)"
   fi
 done
 

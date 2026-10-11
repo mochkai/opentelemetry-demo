@@ -2,9 +2,19 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+data "aws_caller_identity" "current" {}
+
 locals {
   cluster_name = "${var.project}-eks"
   azs          = slice(data.aws_availability_zones.available.names, 0, 3)
+
+  # IAM principals that get read-only access to every cluster resource. IAM alone
+  # isn't enough to see nodes/pods in the EKS console: the principal also needs a
+  # Kubernetes identity, granted here via EKS access entries.
+  console_viewers = merge(
+    var.grant_root_console_view ? { account-root = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" } : {},
+    var.console_viewers,
+  )
 }
 
 module "vpc" {
@@ -39,6 +49,21 @@ module "eks" {
 
   # Grants the identity running terraform cluster-admin via EKS access entries.
   enable_cluster_creator_admin_permissions = true
+
+  # AmazonEKSAdminViewPolicy, not AmazonEKSViewPolicy: the latter maps to the
+  # Kubernetes "view" role, which excludes cluster-scoped objects like nodes, so the
+  # console shows pods but no nodes. AdminView is read-only but can read Secrets.
+  access_entries = {
+    for name, arn in local.console_viewers : "console-${name}" => {
+      principal_arn = arn
+      policy_associations = {
+        admin-view = {
+          policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
+          access_scope = { type = "cluster" }
+        }
+      }
+    }
+  }
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets

@@ -40,3 +40,15 @@ variable "node_desired_size" {
   type    = number
   default = 3
 }
+
+variable "grant_root_console_view" {
+  description = "Give the account root user read-only access to cluster resources (EKS console)."
+  type        = bool
+  default     = true
+}
+
+variable "console_viewers" {
+  description = "Extra IAM principals (label => ARN) given read-only access to all cluster resources, e.g. an admin user or SSO role."
+  type        = map(string)
+  default     = {}
+}
