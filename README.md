@@ -11,8 +11,7 @@ Claude initially configured the repo to include all telemetry vendors withn the 
 
 ### Coralogix Integration
 Added terraform configurations to create an archive bucket for the coralogix logs. All coralogix specific configuration will be made directly in the UI.
-
-
+>coralogix related helm files are placed inside the helm folder, this includes configurations for the otel demo when corralogix environment is present.
 
 ## Initializing the project
 As part of the concept behind this demo this needs to be reproducible anywhere. So the use of terraform and a makefile are with that intent in mind.
@@ -29,7 +28,11 @@ This will reduce the node count to 0 effectivelly stoping the kubernetes cluster
 ### make wake
 This will re-instate the kubernetes cluster by restoring the node count and resuming the service.
 
+### make check-env
+This will list all the pods and which nodes they belong to by IP.
 
+### make rebalance
+This will redistribute pods betweeen the available nodes and should always be run after funning the `make wake` command as this command will cause most pods to be allocated to the first availalable node that becomes ready.
 
 ## Terraform + AWS
 when using this project along with terraform and AWS, a user with the apropriate permissions need to be set up. If a user already exists for terraform deployments ensure that the following policies get added to the user:
@@ -191,6 +194,9 @@ For the Coralogix agent to fully function the private key must be included into 
 When trying to Configure metrics Bucket after adding the bucket name value and hitting the save button it returns a positive response letting the user know the change has been implemented but once the page is refreshed the field is still blank... This is under investigation.
 
 #### Alerts not saving
-when trying to create an alerts based on metrics and sending data via webhooks, there is a generic error occurring in the last step with no meaningful message for clear understanding of the error, leaving the use unsure if it is a configuration or permission issue.
+When trying to create an alerts based on metrics and sending data via webhooks, there is a generic error occurring in the last step with no meaningful message for clear understanding of the error, leaving the use unsure if it is a configuration or permission issue.
 
+### AI usage
+AI was used do build and configure some of the initial structure, however the initially proposed folder structure and overall architecture needed adjustments as it proposed all configuration files should be placed within the same folder. After consideration the appropriate structure would be to use a vendor based approach to be in line of a real production ready scenario where the vendors can be added or removed without affecting the core structure of the demo.
 
+AI assistance was also employed in the permission based configuration for AWS, and initial terraform script creation.
