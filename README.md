@@ -20,6 +20,15 @@ As part of the concept behind this demo this needs to be reproducible anywhere. 
 ### make up
 This will run all the commands required to create th EKS cluster and install the open telemetry demo onto the cluster.
 
+### make down
+This command will remove and destroy any resource that has been previously deplouyed with the exception of the S3 archive buckets.
+
+### make sleep
+This will reduce the node count to 0 effectivelly stoping the kubernetes cluster to avoid incuring costs when not in use.
+
+### make wake
+This will re-instate the kubernetes cluster by restoring the node count and resuming the service.
+
 
 
 ## Terraform + AWS
@@ -173,3 +182,15 @@ when using this project along with terraform and AWS, a user with the apropriate
 
 #### Misconfigured variables.tf file
 When first deploying, after setting everything up, the variables file still contained non default values which meant the var options would have to be used along terraform apply commands.
+
+#### Missing coralogix agent
+During the demo run test if the coralogix agent is not installed the frontend will crash when trying to process the telemetry data rendering it unusable. The only workaround for that would be to use the out of the box telemetry collectors within the demo itself.
+For the Coralogix agent to fully function the private key must be included into the environment file, if it is not configured correctly it will cause the same crashes.
+
+#### Data archive not retaining configuration value
+When trying to Configure metrics Bucket after adding the bucket name value and hitting the save button it returns a positive response letting the user know the change has been implemented but once the page is refreshed the field is still blank... This is under investigation.
+
+#### Alerts not saving
+when trying to create an alerts based on metrics and sending data via webhooks, there is a generic error occurring in the last step with no meaningful message for clear understanding of the error, leaving the use unsure if it is a configuration or permission issue.
+
+

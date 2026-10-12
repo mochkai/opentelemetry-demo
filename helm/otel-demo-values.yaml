@@ -1,0 +1,22 @@
+# Base (vendor-neutral) values for the OpenTelemetry Demo chart. Vendor overlays in
+# vendors/<name>/helm/ are applied after this file and win on conflicts.
+
+default:
+  schedulingRules:
+    # Spread the demo's pods across nodes. Every service runs 1 replica, so the rule
+    # has to count ALL demo pods, not pods of one service: "prefer a node that runs
+    # fewer pods with an app.kubernetes.io/component label" (the term only matches
+    # pods in this release's namespace). The chart doesn't expose
+    # topologySpreadConstraints, so this uses soft pod anti-affinity instead.
+    # Preferred, not required: with 25 pods on 3 nodes a hard rule would leave
+    # pods Pending. Applies at scheduling time only; see `make rebalance`.
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/component
+                    operator: Exists
